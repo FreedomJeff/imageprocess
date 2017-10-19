@@ -21,7 +21,89 @@ u8 filebuf[5120*960*3/2] = {0};//for i420@5120x960
 #define WIDTH_SCALE 1280
 #define HEIGHT_SCALE 240
 u8 i420_buf[WIDTH_SCALE*HEIGHT_SCALE*3/2] = {0};
+static void dumpYUV(void *addr, int size, int index)
+{
+        sysUsecTime();
 
+    ALOGD("dumpYUV E\n");
+    char name[128] = {0};
+    int count = 0;
+
+    snprintf(name, sizeof(name), "/usr/share/misc/%d_%d_%d_num%d.yuv",
+                                g_preview_w, g_preview_h, size, index);
+
+    FILE *file_fd = fopen(name, "wb");
+
+    if (file_fd == NULL) {
+        ALOGE("open yuv file fail!\n");
+        return;
+    } else {
+        count = fwrite(addr, 1, size, file_fd);
+        if (count != size) {
+            ALOGE("write yuv fail!\n");
+        }
+        fflush(file_fd);
+        if (file_fd)
+                fclose(file_fd);
+    }
+    sysUsecTime();
+
+    ALOGD("dumpYUV X\n");
+    return;
+}
+
+void sysUsecTime()
+{
+        struct timeval tv;
+        struct timezone tz;
+        struct tm *p;
+        gettimeofday(&tv, &tz);
+
+        p = localtime(&tv.tv_sec);
+        ALOGE("%d-%d-%d %d:%d.%d.%ld\n",
+                1900+p->tm_year, 1+p->tm_mon, p->tm_mday,
+                p->tm_hour, p->tm_min, p->tm_sec, tv.tv_usec);
+}
+
+bool dumpToFile(char *filename, char *srcBuf, unsigned int size)
+{
+	FILE *yuvFd = NULL;
+	char *buffer = NULL;
+
+	yuvFd = fopen(filename, "a+");
+
+	if (yuvFd == NULL) {
+		ALOGE("ERR(%s):open(%s) fail",
+			__func__, filename);
+		return false;
+	}
+
+	buffer = (char *)malloc(size);
+
+	if (buffer == NULL) {
+		ALOGE("ERR(%s):malloc file", __func__);
+		fclose(yuvFd);
+		return false;
+	}
+
+	memcpy(buffer, srcBuf, size);
+
+	fflush(stdout);
+
+	fwrite(buffer, 1, size, yuvFd);
+
+	fflush(yuvFd);
+
+	if (yuvFd)
+		fclose(yuvFd);
+	if (buffer)
+		free(buffer);
+
+	ALOGE("DEBUG(%s):filedump(%s, size(%d) is successed!!",
+		__func__, filename, size);
+
+	return true;
+}
 int uyvy_remosaic(u8 *old_yuv422, u8 *new_yuv422, u32 width, u32 height)
 {
     u32 offset_screen3;
@@ -151,7 +233,39 @@ int uyvy422toyuvI420(unsigned char *yuv420, const unsigned char *yuv422, unsigne
         printf("end.\n");
         return 1;
 }
-
+int uyvy422toyuvI420_refine(u8 *yuv420, const u8 *yuv422, u32 width, u32 height)
+{
+        //printf("yuv422 convert begin.\n");
+        //sysUsecTime();
+        if (yuv420 == NULL | yuv422 == NULL) {
+                return -1;
+        }
+        u8 *y = yuv420;
+        u8 *u = yuv420 + width * height;
+        u8 *v = yuv420 + width * height + width * height / 4;
+        u32 i, j;
+        u32 base_h;
+        u32 y_index = 0, u_index = 0, v_index = 0;
+        u32 yuv422_length_half = width * height;
+        u32 yuv420_length = width * height / 2;
+        for(i = 1; i < yuv422_length_half; i += 2) {
+                *(y + y_index) = *(yuv422 + i);
+                *(y + yuv420_length + y_index) = *(yuv422 + yuv422_length_half + i);
+                y_index++;
+        }
+        for(i = 0; i < height; i += 2) {
+                base_h = i * width * 2;
+                for(j = base_h; j < base_h + width * 2; j += 4) {
+                        *(u + u_index) = *(yuv422 + j);
+                        *(v + v_index) = *(yuv422 + j + 2);
+                        u_index++;
+                        v_index++;
+                }
+        }
+        //sysUsecTime();
+        //printf("yuv422 convert end.\n");
+        return 0;
+}
 
 int yuyv422toyuvI420(unsigned char *yuv420, const unsigned char *yuv422, unsigned int width, unsigned int height)
 {
